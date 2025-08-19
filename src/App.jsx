@@ -1,110 +1,97 @@
-import React, { useEffect, useRef } from "react";
-import { RefreshCw, Gauge as GaugeIcon, Settings2 } from "lucide-react";
-
-/** TradingView Symbol Overview widget (single symbol) */
-function TradingViewSymbolOverview({ symbol, height = 260 }) {
-  const container = useRef(null);
-
-  useEffect(() => {
-    const s = document.createElement("script");
-    s.src = "https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js";
-    s.type = "text/javascript";
-    s.async = true;
-    s.innerHTML = JSON.stringify({
-      symbols: [[symbol]],        // e.g. ["NSE:NIFTY"]
-      chartOnly: false,
-      width: "100%",
-      height,
-      locale: "en",
-      colorTheme: "dark",
-      autosize: true,
-      showVolume: false,
-      showMA: true,
-      hideDateRanges: false,
-      hideIdeas: true,
-      hideMarketStatus: true,
-      hideSymbolLogo: false,
-      scalePosition: "no",
-      scaleMode: "Normal",
-      lineWidth: 2,
-      fontFamily: "inherit",
-    });
-
-    if (container.current) {
-      container.current.innerHTML = "";
-      container.current.appendChild(s);
-    }
-    return () => {
-      if (container.current) container.current.innerHTML = "";
-    };
-  }, [symbol, height]);
-
-  return <div className="tradingview-widget-container" ref={container} />;
-}
-
-/** TradingView symbols (exchange-prefixed) */
-const INDEXES = [
-  { key: "NIFTY",  title: "NIFTY 50",        symbol: "NSE:NIFTY" },
-  { key: "BANK",   title: "NIFTY BANK",      symbol: "NSE:BANKNIFTY" },
-  { key: "N500",   title: "NIFTY 500",       symbol: "NSE:CNX500" },
-  { key: "MID",    title: "NIFTY MIDCAP",    symbol: "NSE:CNXMIDCAP" },
-  { key: "SMALL",  title: "NIFTY SMALLCAP",  symbol: "NSE:CNXSMALLCAP" },
-  // TradingView widget usually doesn't expose NIFTY MICROCAP 250 as a symbol.
-  // If you have a proxy, add it here, e.g. an ETF: { key: "MICRO", title: "NIFTY MICROCAP", symbol: "NSE:XXXX" },
-];
+import React, { useEffect, useRef, useState } from "react";
+import { createChart } from "lightweight-charts";
 
 export default function App() {
+  const chartContainerRef = useRef();
+  const [symbol, setSymbol] = useState("^NSEI"); // NIFTY50 default
+  const [interval, setInterval] = useState("1d");
+  const chartRef = useRef();
+  const candleSeriesRef = useRef();
+  const smaSeriesRef = useRef();
+
+  // fetch Yahoo candles
+  const fetchData = async () => {
+    try {
+      const res = await fetch(`/api/yahoo?symbol=${symbol}&interval=${interval}`);
+      const data = await res.json();
+
+      if (!data || !data.quotes) return;
+      const candles = data.quotes.map(d => ({
+        time: Math.floor(new Date(d.date).getTime() / 1000),
+        open: d.open,
+        high: d.high,
+        low: d.low,
+        close: d.close,
+      }));
+
+      candleSeriesRef.current.setData(candles);
+
+      // simple SMA overlay
+      const len = 20;
+      const sma = candles.map((c, i) => {
+        if (i < len) return null;
+        const slice = candles.slice(i - len, i);
+        const avg = slice.reduce((s, d) => s + d.close, 0) / len;
+        return { time: c.time, value: avg };
+      }).filter(Boolean);
+      smaSeriesRef.current.setData(sma);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    if (!chartRef.current) {
+      chartRef.current = createChart(chartContainerRef.current, {
+        layout: {
+          background: { color: "#0f172a" },
+          textColor: "#cbd5e1",
+        },
+        grid: {
+          vertLines: { color: "#1e293b" },
+          horzLines: { color: "#1e293b" },
+        },
+        crosshair: { mode: 1 },
+        timeScale: { borderColor: "#475569" },
+      });
+
+      candleSeriesRef.current = chartRef.current.addCandlestickSeries({
+        upColor: "#22c55e",
+        borderUpColor: "#22c55e",
+        wickUpColor: "#22c55e",
+        downColor: "#ef4444",
+        borderDownColor: "#ef4444",
+        wickDownColor: "#ef4444",
+      });
+
+      smaSeriesRef.current = chartRef.current.addLineSeries({
+        color: "#eab308",
+        lineWidth: 2,
+      });
+    }
+    fetchData();
+  }, [symbol, interval]);
+
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
-      <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-slate-900/50 border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-400/30 grid place-items-center">
-              <GaugeIcon className="w-4 h-4 text-emerald-300" />
-            </div>
-            <h1 className="text-lg font-semibold tracking-wide">Market Breadth — TradingView</h1>
-          </div>
-          <div className="flex items-center gap-3 text-sm">
-            <button
-              className="px-3 py-1.5 rounded-lg bg-slate-800/60 border border-white/10 hover:bg-slate-800 flex items-center gap-2"
-              onClick={() => location.reload()}
-            >
-              <RefreshCw className="w-4 h-4" />
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
-          </div>
+    <div className="min-h-screen bg-slate-900 text-white p-4">
+      <header className="flex justify-between items-center mb-4">
+        <h1 className="text-lg font-semibold">📈 TradingView Clone — Yahoo Data</h1>
+        <div className="flex gap-2">
+          <select value={symbol} onChange={e => setSymbol(e.target.value)} className="text-black px-2 py-1 rounded">
+            <option value="^NSEI">NIFTY 50</option>
+            <option value="^NSEBANK">BANKNIFTY</option>
+            <option value="^CRSLDX">NIFTY 500</option>
+            <option value="^CRSMID">NIFTY MIDCAP</option>
+          </select>
+          <select value={interval} onChange={e => setInterval(e.target.value)} className="text-black px-2 py-1 rounded">
+            <option value="1d">1D</option>
+            <option value="1h">1H</option>
+            <option value="15m">15m</option>
+          </select>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-6 grid lg:grid-cols-[1fr_320px] gap-6">
-        <div className="flex flex-col gap-6">
-          <div className="grid md:grid-cols-2 gap-6">
-            {INDEXES.map((idx) => (
-              <div key={idx.key} className="bg-slate-900/60 border border-white/10 rounded-2xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-white/90 font-semibold tracking-wide">{idx.title}</h3>
-                </div>
-                <TradingViewSymbolOverview symbol={idx.symbol} height={260} />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <aside className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 h-fit sticky top-20">
-          <div className="flex items-center gap-2 mb-3">
-            <Settings2 className="w-4 h-4" />
-            <h3 className="font-semibold text-white/90">Controls</h3>
-          </div>
-          <div className="text-xs text-white/60 space-y-2">
-            <p>These blocks embed TradingView’s Symbol Overview widget (delayed data).</p>
-            <p>Edit <code>INDEXES</code> to change symbols (use TradingView’s exchange-prefixed format, e.g. <code>NSE:NIFTY</code>).</p>
-          </div>
-        </aside>
-      </main>
-
-      <footer className="max-w-7xl mx-auto px-4 pb-8 text-xs text-white/40">
-        © {new Date().getFullYear()} Market Breadth — TradingView
-      </footer>
+      <div ref={chartContainerRef} style={{ width: "100%", height: "80vh" }} />
     </div>
   );
 }
