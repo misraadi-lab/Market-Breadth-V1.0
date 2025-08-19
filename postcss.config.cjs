@@ -1,4 +1,4 @@
-// postcss.config.js  (CommonJS, safest on Vercel)
+// postcss.config.cjs
 module.exports = {
   plugins: {
     tailwindcss: {},
