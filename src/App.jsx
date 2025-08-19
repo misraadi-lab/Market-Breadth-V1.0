@@ -1,18 +1,17 @@
-<h1 className="text-lg font-semibold tracking-wide">
-  Market Breadth — Yahoo (Free)
-</h1>
-
 import React, { useEffect, useMemo, useState } from "react";
 import { RefreshCw, Settings2, Gauge as GaugeIcon } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from "recharts";
+import {
+  ComposedChart, Area, Line, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid
+} from "recharts";
 
 const INDEXES = [
   { key: "NIFTY", title: "NIFTY 50", symbol: "^NSEI" },
   { key: "BANK",  title: "NIFTY BANK", symbol: "^NSEBANK" },
-  { key: "N500",  title: "NIFTY 500", symbol: "^CRSLDX" },   // change if needed
-  { key: "MID",   title: "NIFTY MIDCAP", symbol: "^CRSMID" },// change if needed
-  { key: "SMALL", title: "NIFTY SMALLCAP", symbol: "NIFTYSMALL.NS" }, // proxy if needed
-  { key: "MICRO", title: "NIFTY MICROCAP", symbol: "SMALCAP.NS" }     // proxy if needed
+  { key: "N500",  title: "NIFTY 500", symbol: "^CRSLDX" },     // adjust if needed
+  { key: "MID",   title: "NIFTY MIDCAP", symbol: "^CRSMID" },  // adjust if needed
+  { key: "SMALL", title: "NIFTY SMALLCAP", symbol: "NIFTYSMALL.NS" }, // proxy
+  { key: "MICRO", title: "NIFTY MICROCAP", symbol: "SMALCAP.NS" }     // proxy
 ];
 
 function rollingSMA(series, len) {
@@ -40,26 +39,57 @@ function perTFScore(series, sma, deadbandPct = 0.0005) {
 
 const Pill = ({ value }) => {
   const bg = value >= 0 ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300";
-  return <span className={`px-2 py-0.5 text-xs rounded-full ${bg} border border-white/10`}>{(value||0).toFixed(1)}</span>;
+  return <span className={`px-2 py-0.5 text-xs rounded-full ${bg} border border-white/10`}>{(value || 0).toFixed(1)}</span>;
 };
 
+// ---------- NEW TFCard (moving SMA line + rich tooltip) ----------
 function TFCard({ tfLabel, candles, maLen }) {
-  const sma = useMemo(()=>rollingSMA(candles, maLen), [candles, maLen]);
+  const nf = useMemo(() => new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }), []);
+  const df = useMemo(() => new Intl.DateTimeFormat("en-GB", {
+    year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit"
+  }), []);
+
+  const sma = useMemo(() => rollingSMA(candles, maLen), [candles, maLen]);
   const score = perTFScore(candles, sma);
-  const lastS = sma[sma.length-1];
-  const bars = candles.map((d, i) => ({
-    x: i, close: d.close, sma: sma[i],
-    color: d.low > (sma[i] ?? Infinity) ? "#10b981" : d.high < (sma[i] ?? -Infinity) ? "#ef4444" : "#9ca3af",
-  }));
+
+  const data = useMemo(() => candles.map((d, i) => ({
+    i,
+    timeISO: d.time,
+    timeLabel: df.format(new Date(d.time)),
+    open: d.open, high: d.high, low: d.low, close: d.close,
+    sma: sma[i],
+  })), [candles, sma, df]);
+
+  const CustomTooltip = ({ active, payload }) => {
+    if (!active || !payload || !payload.length) return null;
+    const p = payload[0].payload;
+    return (
+      <div style={{
+        background: "#0b1220", border: "1px solid #1f2937",
+        borderRadius: 8, padding: "8px 10px", fontSize: 12, color: "#cbd5e1"
+      }}>
+        <div style={{ fontWeight: 600, color: "#93c5fd", marginBottom: 4 }}>{p.timeLabel}</div>
+        <div>Open: <b>{nf.format(p.open)}</b></div>
+        <div>High: <b>{nf.format(p.high)}</b></div>
+        <div>Low:  <b>{nf.format(p.low)}</b></div>
+        <div>Close:<b>{nf.format(p.close)}</b></div>
+        {p.sma != null && <div style={{ color: "#eab308" }}>SMA{maLen}: <b>{nf.format(p.sma)}</b></div>}
+      </div>
+    );
+  };
+
   return (
     <div className="bg-slate-800/60 border border-white/10 rounded-xl p-3 flex flex-col gap-2">
       <div className="flex items-center justify-between text-xs text-white/70">
         <span>{tfLabel} • MA {maLen}</span>
-        <Pill value={score} />
+        <span className={`px-2 py-0.5 text-xs rounded-full border border-white/10 ${score >= 0 ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}`}>
+          {score.toFixed(1)}
+        </span>
       </div>
+
       <div className="h-28">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={bars} margin={{ left: 0, right: 0, top: 10, bottom: 0 }}>
+          <ComposedChart data={data} margin={{ left: 0, right: 0, top: 8, bottom: 0 }}>
             <defs>
               <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#64748b" stopOpacity={0.35}/>
@@ -67,31 +97,35 @@ function TFCard({ tfLabel, candles, maLen }) {
               </linearGradient>
             </defs>
             <CartesianGrid stroke="#0f172a" strokeDasharray="3 3" />
-            <XAxis dataKey="x" hide /><YAxis hide domain={["auto","auto"]} />
-            <Tooltip contentStyle={{ background: "#0b1220", border: "1px solid #1f2937", borderRadius: 8 }} labelStyle={{ color: "#94a3b8" }} />
+            <XAxis dataKey="i" hide />
+            <YAxis hide domain={["auto","auto"]} />
+            <Tooltip content={<CustomTooltip />} />
+            {/* Price area */}
             <Area type="monotone" dataKey="close" stroke="#93c5fd" fill="url(#grad)" strokeWidth={1.4} />
-            <ReferenceLine y={lastS} stroke="#eab308" strokeDasharray="5 5" />
-          </AreaChart>
+            {/* Moving Average line */}
+            <Line type="monotone" dataKey="sma" stroke="#eab308" strokeWidth={1.4} dot={false} />
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </div>
   );
 }
+// -----------------------------------------------------------------
 
 function useYahooCandles(symbol, interval, range) {
   const [data, setData] = useState(null);
-  useEffect(()=>{
+  useEffect(() => {
     let alive = true;
-    (async ()=>{
+    (async () => {
       const res = await fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${interval}&range=${range}`);
       if (res.ok) {
         const json = await res.json();
         if (alive) setData(json.candles);
-      } else {
-        if (alive) setData([]);
+      } else if (alive) {
+        setData([]);
       }
     })();
-    return ()=>{alive=false};
+    return () => { alive = false; };
   }, [symbol, interval, range]);
   return data;
 }
@@ -101,11 +135,10 @@ function BlockCard({ title, symbol, maLen, tfOn }) {
   const h1  = useYahooCandles(symbol, "60m", "10d");
   const m15 = useYahooCandles(symbol, "15m", "5d");
 
-  const score = useMemo(()=>{
-    const s = (arr)=> (arr && arr.length)? perTFScore(arr, rollingSMA(arr, maLen)) : 0;
-    const S = (tfOn.daily?2*s(d1):0) + (tfOn.h1?1.5*s(h1):0) + (tfOn.m15?1*s(m15):0);
-    return S;
-  }, [d1,h1,m15,maLen,tfOn]);
+  const score = useMemo(() => {
+    const s = (arr) => (arr && arr.length) ? perTFScore(arr, rollingSMA(arr, maLen)) : 0;
+    return (tfOn.daily ? 2 * s(d1) : 0) + (tfOn.h1 ? 1.5 * s(h1) : 0) + (tfOn.m15 ? 1 * s(m15) : 0);
+  }, [d1, h1, m15, maLen, tfOn]);
 
   return (
     <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 flex flex-col gap-3">
