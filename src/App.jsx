@@ -1,3 +1,7 @@
+<h1 className="text-lg font-semibold tracking-wide">
+  Market Breadth — Yahoo (Free)
+</h1>
+
 import React, { useEffect, useMemo, useState } from "react";
 import { RefreshCw, Settings2, Gauge as GaugeIcon } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from "recharts";
