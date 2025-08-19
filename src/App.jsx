@@ -1,50 +1,56 @@
 import React, { useEffect, useRef } from "react";
 import { RefreshCw, Gauge as GaugeIcon, Settings2 } from "lucide-react";
 
-/** Inline TradingView mini-widget */
-function TradingViewWidget({ symbol = "NSE:NIFTY", height = 220, dateRange = "1M" }) {
+/** TradingView Symbol Overview widget (single symbol) */
+function TradingViewSymbolOverview({ symbol, height = 260 }) {
   const container = useRef(null);
 
   useEffect(() => {
-    if (!container.current) return;
-
-    const script = document.createElement("script");
-    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js";
-    script.type = "text/javascript";
-    script.async = true;
-    script.innerHTML = JSON.stringify({
-      symbol,                // e.g. "NSE:NIFTY"
+    const s = document.createElement("script");
+    s.src = "https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js";
+    s.type = "text/javascript";
+    s.async = true;
+    s.innerHTML = JSON.stringify({
+      symbols: [[symbol]],        // e.g. ["NSE:NIFTY"]
+      chartOnly: false,
       width: "100%",
       height,
       locale: "en",
-      dateRange,             // "1D","5D","1M","3M","6M","12M","60M","ALL"
       colorTheme: "dark",
-      isTransparent: true,
       autosize: true,
-      largeChartUrl: "",     // optional: set to open full chart on click
+      showVolume: false,
+      showMA: true,
+      hideDateRanges: false,
+      hideIdeas: true,
+      hideMarketStatus: true,
+      hideSymbolLogo: false,
+      scalePosition: "no",
+      scaleMode: "Normal",
+      lineWidth: 2,
+      fontFamily: "inherit",
     });
 
-    // Clear & mount
-    container.current.innerHTML = "";
-    container.current.appendChild(script);
-
-    // Cleanup not strictly needed for this script tag
+    if (container.current) {
+      container.current.innerHTML = "";
+      container.current.appendChild(s);
+    }
     return () => {
       if (container.current) container.current.innerHTML = "";
     };
-  }, [symbol, height, dateRange]);
+  }, [symbol, height]);
 
   return <div className="tradingview-widget-container" ref={container} />;
 }
 
-/** TradingView symbols for Indian indices (adjust if needed) */
+/** TradingView symbols (exchange-prefixed) */
 const INDEXES = [
-  { key: "NIFTY", title: "NIFTY 50", symbol: "NSE:NIFTY" },
-  { key: "BANK", title: "NIFTY BANK", symbol: "NSE:BANKNIFTY" },
-  { key: "N500", title: "NIFTY 500", symbol: "NSE:CNX500" },      // update if your TV symbol differs
-  { key: "MID", title: "NIFTY MIDCAP", symbol: "NSE:MIDCAP" },    // update if needed
-  { key: "SMALL", title: "NIFTY SMALLCAP", symbol: "NSE:SMALLCAP" }, // update if needed
-  { key: "MICRO", title: "NIFTY MICROCAP", symbol: "NSE:MICROCAP" }, // update if needed / proxy
+  { key: "NIFTY",  title: "NIFTY 50",        symbol: "NSE:NIFTY" },
+  { key: "BANK",   title: "NIFTY BANK",      symbol: "NSE:BANKNIFTY" },
+  { key: "N500",   title: "NIFTY 500",       symbol: "NSE:CNX500" },
+  { key: "MID",    title: "NIFTY MIDCAP",    symbol: "NSE:CNXMIDCAP" },
+  { key: "SMALL",  title: "NIFTY SMALLCAP",  symbol: "NSE:CNXSMALLCAP" },
+  // TradingView widget usually doesn't expose NIFTY MICROCAP 250 as a symbol.
+  // If you have a proxy, add it here, e.g. an ETF: { key: "MICRO", title: "NIFTY MICROCAP", symbol: "NSE:XXXX" },
 ];
 
 export default function App() {
@@ -78,25 +84,20 @@ export default function App() {
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-white/90 font-semibold tracking-wide">{idx.title}</h3>
                 </div>
-                <TradingViewWidget symbol={idx.symbol} height={220} dateRange="1M" />
+                <TradingViewSymbolOverview symbol={idx.symbol} height={260} />
               </div>
             ))}
           </div>
         </div>
 
-        {/* Right-side panel (optional controls placeholder) */}
         <aside className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 h-fit sticky top-20">
           <div className="flex items-center gap-2 mb-3">
             <Settings2 className="w-4 h-4" />
             <h3 className="font-semibold text-white/90">Controls</h3>
           </div>
           <div className="text-xs text-white/60 space-y-2">
-            <p>These blocks embed TradingView’s mini symbol widgets.</p>
-            <p>
-              To change a symbol, edit <code>INDEXES</code> (e.g. <code>NSE:NIFTY</code>,{" "}
-              <code>NSE:BANKNIFTY</code>, <code>BSE:SENSEX</code>).
-            </p>
-            <p>Data is delayed on the free widget.</p>
+            <p>These blocks embed TradingView’s Symbol Overview widget (delayed data).</p>
+            <p>Edit <code>INDEXES</code> to change symbols (use TradingView’s exchange-prefixed format, e.g. <code>NSE:NIFTY</code>).</p>
           </div>
         </aside>
       </main>
